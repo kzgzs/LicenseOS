@@ -1,0 +1,50 @@
+/node_modules
+/public/hot
+/public/storage
+/public/build
+/storage/*.key
+/vendor
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+*.log
+screenshot_*
+配置文件.txt
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor temp files
+*.swp
+*.swo
+*~
+
+# Temp/debug files
+*.tmp
+*.new
+# 独立子项目（非主 Laravel 项目，按需单独建仓）
+/dingji-pay-gateway/
+/epay-main/
+/move-bottom-menu/
+
+# 工具/快照
+/.codeartsdoer/
+/.merkle-snapshot.json
+
+# Laravel 运行时 storage 内容（保留目录结构与 storage/show_head.blade.php）
+/storage/app/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+!**/.gitkeep

@@ -1,0 +1,46 @@
+# ============================================
+# LicenseOS V3.2 - Docker Ignore
+# ============================================
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Environment (use .env.production in container)
+.env
+.env.example
+
+# Testing
+tests/
+phpunit.xml
+
+# Docs
+*.md
+docs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (if any)
+node_modules/
+npm-debug.log
+
+# Storage (mounted as volume)
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+
+# Vendor (installed in container)
+vendor/
+
+# Docker (avoid recursive copy)
+docker-compose.override.yml
+docker/nginx/ssl/

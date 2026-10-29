@@ -1,0 +1,11 @@
+<?php
+
+namespace App\Filament\Resources\NavigationItemResource\Pages;
+
+use App\Filament\Resources\NavigationItemResource;
+use Filament\Resources\Pages\ListRecords;
+
+class ListNavigationItems extends ListRecords
+{
+    protected static string $resource = NavigationItemResource::class;
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Digital Platform",
+  "short_name": "Platform",
+  "description": "Developer SaaS Marketplace Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "icons": []
+}
