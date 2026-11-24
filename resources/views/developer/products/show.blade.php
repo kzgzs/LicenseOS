@@ -47,9 +47,9 @@
 @endif
 
 @php
-    // Check injection status for WP plugins/themes
+    // Check injection status for package types (WP + non-WP injectable)
     $hasProtection = false;
-    if (in_array($product->type, ['wp_plugin', 'wp_theme'])) {
+    if (in_array($product->type, ['wp_plugin', 'wp_theme', 'web_app', 'desktop_app', 'source_code', 'laravel_package', 'script', 'api_service', 'saas'])) {
         $latestPackage = \App\Models\UpdatePackage::where('product_id', $product->id)->latest('id')->first();
         // Check if product has injection (regardless of whether it was auto-injected)
         $hasProtection = $latestPackage !== null;
@@ -57,7 +57,7 @@
 @endphp
 
 {{-- Show guide if license protection enabled but not injected --}}
-@if(in_array($product->type, ['wp_plugin', 'wp_theme']) && $hasProtection)
+@if(in_array($product->type, ['wp_plugin', 'wp_theme', 'web_app', 'desktop_app', 'source_code', 'laravel_package', 'script', 'api_service', 'saas']) && $hasProtection)
     @php
         $isInjected = false;
         if ($latestPackage !== null) {
@@ -228,8 +228,8 @@
         </div>
 
 
-        {{-- License Protection (WP types only) --}}
-        @if(in_array($product->type, ['wp_plugin', 'wp_theme']))
+        {{-- License Protection (package types) --}}
+        @if(in_array($product->type, ['wp_plugin', 'wp_theme', 'web_app', 'desktop_app', 'source_code', 'laravel_package', 'script', 'api_service', 'saas']))
         <div id="edit-license-protection-section" class="border-t dark:border-gray-700 pt-4 mt-4" style="{{ $isFreeProduct ? 'display:none' : '' }}">
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
                 {{ __('授权保护由平台统一注入，请在下方“产品管理”区域进行一键注入或复原操作。') }}
@@ -429,8 +429,8 @@
     </form>
 </div>
 
-{{-- Inject Status Badge (WP types only) --}}
-@if(in_array($product->type, ['wp_plugin', 'wp_theme']) && $latestPackage)
+{{-- Inject Status Badge (package types) --}}
+@if(in_array($product->type, ['wp_plugin', 'wp_theme', 'web_app', 'desktop_app', 'source_code', 'laravel_package', 'script', 'api_service', 'saas']) && $latestPackage)
 <div class="mb-4">
     @php
         $isInjected = !empty($latestPackage->injection_modules);
@@ -488,6 +488,9 @@
     <form method="POST" action="{{ route('developer.products.action', $product) }}" id="inject-form">
         @csrf
         <input type="hidden" name="action" value="inject">
+        @if(!in_array($product->type, ['wp_plugin', 'wp_theme']))
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">非 WP 类型：注入内容为 license-os/config.json（授权 API 配置）+ manifest.json（原文件完整性清单），不改任何原文件；下方模块勾选仅对 WP 类型生效。</p>
+        @endif
         <div class="space-y-3 mb-4">
             <label class="flex items-start space-x-3 cursor-pointer">
                 <input type="checkbox" name="modules[]" value="integrity_guard" checked class="mt-1 rounded border-gray-300 dark:border-gray-600">

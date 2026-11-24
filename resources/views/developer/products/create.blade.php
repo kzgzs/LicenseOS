@@ -277,6 +277,8 @@
 
     // === Conditional visibility based on product type ===
     var WP_TYPES = ['wp_plugin', 'wp_theme'];
+    // 支持上传+注入+还原的包类型（非 WP 走 license-os 配置+完整性清单注入）
+    var PACKAGE_TYPES = WP_TYPES.concat(['web_app', 'desktop_app', 'source_code', 'laravel_package', 'script', 'api_service', 'saas']);
     var typeSelect = document.getElementById('product-type');
     var zipSection = document.getElementById('zip-upload-section');
     var wpMetaSection = document.getElementById('wp-metadata-section');
@@ -356,9 +358,10 @@
     function toggleWpSections() {
         if (!typeSelect) return;
         var isWp = WP_TYPES.indexOf(typeSelect.value) !== -1;
-        if (zipSection) zipSection.style.display = isWp ? '' : 'none';
+        var isPackage = PACKAGE_TYPES.indexOf(typeSelect.value) !== -1;
+        if (zipSection) zipSection.style.display = isPackage ? '' : 'none';
         if (wpMetaSection) wpMetaSection.style.display = isWp ? '' : 'none';
-        if (licenseProtectionSection) licenseProtectionSection.style.display = isWp ? '' : 'none';
+        if (licenseProtectionSection) licenseProtectionSection.style.display = isPackage ? '' : 'none';
 
         // WP-only fields (requires_wp, tested_up_to)
         var wpOnlyFields = document.querySelectorAll('.wp-only-field');
@@ -600,6 +603,7 @@
                     if (!slugField.value && m.name) {
                         slugField.value = m.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
                     }
+                    if (m.slug) slugField.value = m.slug;
                     // readme_found 反馈：区分 "解析成功" 和 "未找到 readme.txt"
                     if (m.readme_found === false) {
                         parseStatus.className = 'text-sm text-yellow-600 dark:text-yellow-400';
@@ -607,7 +611,7 @@
                     } else {
                         var missingFields = [];
                         // wp_theme readme typically has no Installation/FAQ sections — skip those checks
-                        if (typeSelect && typeSelect.value !== 'wp_theme') {
+                        if (typeSelect && WP_TYPES.indexOf(typeSelect.value) !== -1 && typeSelect.value !== 'wp_theme') {
                             if (!m.installation) missingFields.push('Installation');
                             if (!m.faq) missingFields.push('FAQ');
                         }

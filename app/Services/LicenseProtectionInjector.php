@@ -37,6 +37,11 @@ class LicenseProtectionInjector
             return $this->injectTheme($zipPath, $apiUrl, $apiKey, $productSlug);
         }
 
+        // 非 WP 包类型（自托管 Web/桌面/源码等）：配置 + 完整性清单注入，不改任何原文件
+        if (in_array($productType, ['web_app', 'desktop_app', 'source_code', 'laravel_package', 'script', 'api_service', 'saas'], true)) {
+            return $this->injectGeneric($zipPath, $apiUrl, $apiKey, $productSlug, $productType);
+        }
+
         $zip = new ZipArchive();
 
         try {
@@ -642,6 +647,44 @@ PHP;
      * @param string $zipPath ZIP 文件的绝对路径（将被原地替换）
      * @return bool 是否移除成功（文件未注入过也返回 true）
      */
+    /** 非 WP 包注入：写入 license-os/config.json（授权 API 配置）+ manifest.json（原文件逐文件 SHA256）+ README；一键还原即整目录删除。 */
+    protected function injectGeneric(string $zipPath, string $apiUrl, string $apiKey, string $productSlug, string $productType): bool
+    {
+        $zip = new ZipArchive();
+        try {
+            if ($zip->open($zipPath, ZipArchive::CREATE) !== true) {
+                return false;
+            }
+            $files = [];
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $name = $zip->getNameIndex($i);
+                if ($name === false || str_ends_with($name, '/') || str_starts_with($name, 'license-os/')) {
+                    continue;
+                }
+                $content = $zip->getFromIndex($i);
+                if ($content === false) {
+                    continue;
+                }
+                $files[$name] = hash('sha256', $content);
+            }
+            $zip->addFromString('license-os/config.json', json_encode([
+                'api_url' => $apiUrl,
+                'api_key' => $apiKey,
+                'product_slug' => $productSlug,
+                'product_type' => $productType,
+                'injected_at' => now()->toIso8601String(),
+                'modules' => ['license_config', 'integrity_manifest'],
+            ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $zip->addFromString('license-os/manifest.json', json_encode(['algo' => 'sha256', 'files' => $files], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $zip->addFromString('license-os/README.txt', "本目录由 LicenseOS 平台一键注入：config.json 为授权 API 配置，manifest.json 为原文件完整性清单。\n平台一键还原会整体删除本目录，恢复干净包，可迁移其它平台授权。\n请勿手工把本目录放入服务器产品目录：包存储由平台哈希绑定，手工放置无效。");
+            $zip->close();
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('[injectGeneric] failed', ['error' => $e->getMessage()]);
+            return false;
+        }
+    }
+
     public function uninject(string $zipPath): bool
     {
         $zip = new ZipArchive();
@@ -649,6 +692,21 @@ PHP;
         try {
             if ($zip->open($zipPath, ZipArchive::CREATE) !== true) {
                 return false;
+            }
+
+            // 非 WP 包：整体删除 license-os/ 目录即还原干净包
+            $genericEntries = [];
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $n = $zip->getNameIndex($i);
+                if ($n !== false && str_starts_with($n, 'license-os/')) {
+                    $genericEntries[] = $n;
+                }
+            }
+            if (!empty($genericEntries)) {
+                foreach ($genericEntries as $n) {
+                    $zip->deleteName($n);
+                }
+                return true; // finally 统一 close
             }
 
             $mainIndex = $this->findMainPluginFile($zip);
@@ -1777,7 +1835,33 @@ REQUIRE;
         if ($zip->open($zipPath) !== true) {
             return ['status' => 'failed', 'reason' => 'Cannot open ZIP file'];
         }
-        
+
+        // 非 WP 包校验：config + manifest 齐全且逐文件哈希一致（篡改即 incomplete）
+        if ($zip->locateName('license-os/config.json') !== false) {
+            $cfg = json_decode((string) $zip->getFromName('license-os/config.json'), true);
+            $man = json_decode((string) $zip->getFromName('license-os/manifest.json'), true);
+            $zip->close();
+            if (!is_array($cfg) || empty($cfg['api_key']) || !is_array($man) || empty($man['files'])) {
+                return ['status' => 'incomplete', 'reason' => 'license-os config/manifest missing or malformed'];
+            }
+            $z2 = new ZipArchive();
+            if ($z2->open($zipPath) !== true) {
+                return ['status' => 'failed', 'reason' => 'Cannot reopen ZIP'];
+            }
+            $bad = [];
+            foreach ($man['files'] as $name => $hash) {
+                $cur = $z2->getFromName($name);
+                if ($cur === false || hash('sha256', $cur) !== $hash) {
+                    $bad[] = $name;
+                }
+            }
+            $z2->close();
+            if (!empty($bad)) {
+                return ['status' => 'incomplete', 'reason' => 'Integrity mismatch: ' . implode(', ', array_slice($bad, 0, 5))];
+            }
+            return ['status' => 'success', 'verified' => true, 'mode' => 'generic', 'files' => count($man['files'])];
+        }
+
         // 使用 inject() 阶段记录的索引，而不是重新扫描
         if ($this->mainPluginFileIndex !== null) {
             $mainIndex = $this->mainPluginFileIndex;

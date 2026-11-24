@@ -159,6 +159,27 @@ class ProductController extends Controller
                     // ZIP 解析失败不阻止创建，记录日志
                     Log::warning('ZIP 解析失败', ['error' => $e->getMessage()]);
                 }
+            } elseif (in_array($type, ['web_app', 'desktop_app', 'source_code', 'laravel_package', 'script', 'api_service', 'saas'], true)) {
+                try {
+                    $zip = new \ZipArchive();
+                    if ($zip->open($request->file('file')->getRealPath()) === true) {
+                        $mj = $zip->getFromName('licenseos.json');
+                        $zip->close();
+                        $m = $mj !== false ? json_decode($mj, true) : null;
+                        if (is_array($m)) {
+                            foreach (['name', 'slug', 'version', 'description'] as $k) {
+                                if (!empty($m[$k]) && empty($validated[$k])) {
+                                    $validated[$k] = $m[$k];
+                                }
+                            }
+                            if (!empty($m['version'])) {
+                                $metadata['version'] = $m['version'];
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('licenseos.json 解析失败', ['error' => $e->getMessage()]);
+                }
             }
         }
 
@@ -608,6 +629,25 @@ class ProductController extends Controller
         ]);
 
         try {
+            // 非 WP 包：优先读根目录 licenseos.json 清单（名称/版本/slug/描述自动填项）
+            $zipProbe = new \ZipArchive();
+            if ($zipProbe->open($request->file('file')->getRealPath()) === true) {
+                $mj = $zipProbe->getFromName('licenseos.json');
+                $zipProbe->close();
+                if ($mj !== false) {
+                    $m = json_decode($mj, true);
+                    if (is_array($m) && !empty($m['name'])) {
+                        return response()->json(['success' => true, 'metadata' => [
+                            'name' => $m['name'],
+                            'version' => $m['version'] ?? null,
+                            'description' => $m['description'] ?? null,
+                            'short_description' => $m['short_description'] ?? null,
+                            'slug' => $m['slug'] ?? null,
+                            'readme_found' => true,
+                        ]]);
+                    }
+                }
+            }
             $parser = app(WpPluginParserService::class);
             $metadata = $parser->parse($request->file('file'));
 
@@ -702,7 +742,7 @@ class ProductController extends Controller
 
         $validated = $request->validate([
             'modules' => 'required|array|min:1',
-            'modules.*' => 'in:integrity_guard,secondary_check,license_gate,auto_guardian',
+            'modules.*' => 'in:integrity_guard,secondary_check,license_gate,auto_guardian,license_config,integrity_manifest',
         ]);
 
         $modules = $validated['modules'];
@@ -769,7 +809,9 @@ class ProductController extends Controller
             // Update version record
             $latestPackage->update([
                 'file_url' => $result['url'],
-                'injection_modules' => json_encode(['sdk', 'integrity_guard', 'license_gate', 'secondary_cross_check', 'self_guard']), // Complete injection modules
+                'injection_modules' => json_encode(in_array($product->type, ['wp_plugin', 'wp_theme'], true)
+                    ? ['sdk', 'integrity_guard', 'license_gate', 'secondary_cross_check', 'self_guard']
+                    : ['license_config', 'integrity_manifest']), // WP 全模块 / 非 WP 配置+清单
             ]);
 
             // Update product download link
