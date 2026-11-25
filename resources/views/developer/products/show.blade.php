@@ -674,6 +674,7 @@
         '3_months': '{{ __('dev_tiers.3_months') }}',
         '6_months': '{{ __('dev_tiers.6_months') }}',
         '1_year':   '{{ __('dev_tiers.1_year') }}',
+        'custom_years': '{{ __('dev_tiers.custom_years') }}',
         'lifetime': '{{ __('dev_tiers.lifetime') }}'
     };
     var T = {
@@ -686,7 +687,9 @@
         price:      '{{ __('dev_tiers.price') }}',
         label:      '{{ __('dev_tiers.label') }}',
         desc:       '{{ __('dev_tiers.desc') }}',
-        auto_renew: '{{ __('dev_tiers.auto_renew') }}'
+        auto_renew: '{{ __('dev_tiers.auto_renew') }}',
+        years:      '{{ __('dev_tiers.years') }}',
+        years_unit: '{{ __('dev_tiers.years_unit') }}'
     };
     var CURRENCY = '{{ $currencySymbol }}';
     var tierIndex = 0;
@@ -698,6 +701,8 @@
         label = label || ''; description = description || '';
         days = days || '7'; months = months !== undefined && months !== null ? String(months) : '1';
         autoRenew = autoRenew || false;
+        var yearsVal = '10';
+        if (/^\d{1,3}_years$/.test(type)) { yearsVal = String(parseInt(type, 10)); type = 'custom_years'; }
 
         var idx = tierIndex++;
         var div = document.createElement('div');
@@ -729,6 +734,10 @@
                     '<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">' + T.months + '</label>' +
                     '<input type="number" name="pricing_tiers[' + idx + '][months]" value="' + months + '" min="0" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm">' +
                 '</div>' +
+                '<div class="tier-years-field" style="display:none">' +
+                    '<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">' + T.years + '</label>' +
+                    '<input type="number" name="pricing_tiers[' + idx + '][years]" value="' + yearsVal + '" min="1" max="100" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm tier-years-input">' +
+                '</div>' +
                 '<div>' +
                     '<label class="block text-xs text-gray-500 dark:text-gray-400 mb-1">' + T.price + ' (' + CURRENCY + ')</label>' +
                     '<input type="number" name="pricing_tiers[' + idx + '][price]" value="' + price + '" step="0.01" min="0" class="w-full border dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1.5 text-sm tier-price-input"' + ' required' + '>' +
@@ -754,14 +763,28 @@
         container.appendChild(div);
         updateTierFields(div);
         div.querySelector('.tier-type-select').addEventListener('change', function() { updateTierFields(div); });
+        div.querySelector('.tier-years-input').addEventListener('input', function() { syncYears(div); });
         div.querySelector('.remove-tier-btn').addEventListener('click', function() { div.remove(); refreshTierOptions(); });
     }
 
     function updateTierFields(row) {
         var type = row.querySelector('.tier-type-select').value;
+        var isCustom = type === 'custom_years';
         row.querySelector('.tier-days-field').style.display = type === 'trial' ? '' : 'none';
-        row.querySelector('.tier-months-field').style.display = (type === 'trial') ? 'none' : '';
+        row.querySelector('.tier-months-field').style.display = (type === 'trial' || isCustom) ? 'none' : '';
+        row.querySelector('.tier-years-field').style.display = isCustom ? '' : 'none';
+        if (isCustom) syncYears(row);
         refreshTierOptions();
+    }
+
+    function syncYears(row) {
+        var yi = row.querySelector('.tier-years-input');
+        var y = Math.max(1, Math.min(100, parseInt(yi.value, 10) || 1));
+        yi.value = y;
+        row.querySelector('input[name$="[months]"]').value = y * 12;
+        row.querySelector('input[name$="[days]"]').value = y * 365;
+        var li = row.querySelector('input[name$="[label]"]');
+        if (li && !li.value) li.value = y + ' ' + T.years_unit;
     }
 
     function refreshTierOptions() {

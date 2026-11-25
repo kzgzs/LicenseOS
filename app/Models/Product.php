@@ -190,6 +190,7 @@ class Product extends Model
         '3_months' => '3 Months',
         '6_months' => '6 Months',
         '1_year'   => '1 Year',
+        'custom_years' => 'Custom Years (1-100)',
         'lifetime' => 'Lifetime',
     ];
 

@@ -84,7 +84,8 @@ class ProductController extends Controller
             'installation' => 'nullable|string',
             'faq' => 'nullable|string',
             'pricing_tiers' => 'nullable|array',
-            'pricing_tiers.*.type' => 'nullable|string|in:free,trial,1_month,3_months,6_months,1_year,lifetime',
+            'pricing_tiers.*.type' => ['nullable', 'string', 'regex:/^(free|trial|1_month|3_months|6_months|1_year|lifetime|custom_years|\d{1,3}_years)$/'],
+            'pricing_tiers.*.years' => 'nullable|integer|min:1|max:100',
             'pricing_tiers.*.price' => 'nullable|numeric|min:0',
             'pricing_tiers.*.label' => 'nullable|string|max:100',
             'featured' => 'nullable|boolean',
@@ -581,7 +582,8 @@ class ProductController extends Controller
 
         $request->validate([
             'pricing_tiers' => 'nullable|array',
-            'pricing_tiers.*.type' => 'nullable|string|in:free,trial,1_month,3_months,6_months,1_year,lifetime',
+            'pricing_tiers.*.type' => ['nullable', 'string', 'regex:/^(free|trial|1_month|3_months|6_months|1_year|lifetime|custom_years|\d{1,3}_years)$/'],
+            'pricing_tiers.*.years' => 'nullable|integer|min:1|max:100',
             'pricing_tiers.*.price' => 'nullable|numeric|min:0',
             'pricing_tiers.*.label' => 'nullable|string|max:100',
         ]);
@@ -972,6 +974,15 @@ class ProductController extends Controller
         foreach ($raw as $row) {
             $type = $row['type'] ?? '';
             if (!$type) continue;
+            // 自定义年时长：custom_years + years 或 N_years → 统一 N_years（月=年×12、天=年×365）
+            if ($type === 'custom_years' || preg_match('/^(\d{1,3})_years$/', $type, $m)) {
+                $y = $type === 'custom_years' ? (int) ($row['years'] ?? 0) : (int) $m[1];
+                $y = max(1, min(100, $y));
+                $type = $y . '_years';
+                $row['months'] = $y * 12;
+                $row['days'] = $y * 365;
+                if (empty($row['label'])) $row['label'] = $y . ' 年付';
+            }
             $tiers[] = [
                 'type'        => $type,
                 'enabled'     => !empty($row['enabled']),

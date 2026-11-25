@@ -33,7 +33,7 @@ class CheckoutController extends Controller
         $request->validate([
             'product_id' => 'required|exists:products,id',
             'method' => 'sometimes|string|in:stripe,wechat,alipay',
-            'tier_type' => 'sometimes|string|in:trial,1_month,3_months,6_months,1_year,lifetime',
+            'tier_type' => ['sometimes', 'string', 'regex:/^(trial|1_month|3_months|6_months|1_year|lifetime|\d{1,3}_years)$/'],
             'domain' => 'sometimes|string|max:255',
         ]);
 
