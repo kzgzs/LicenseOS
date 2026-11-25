@@ -1,4 +1,6 @@
 /node_modules
+/bootstrap/cache/*
+!/bootstrap/cache/.gitkeep
 /public/hot
 /public/storage
 /public/build
