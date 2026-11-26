@@ -127,3 +127,10 @@ COMPOSER_ALLOW_SUPERUSER=1 /www/server/php/83/bin/php -d memory_limit=512M -d op
 ## 附：顺带一件事（可选）
 
 代码更新完后，若要把站点上 EquiLedger 的安装包也换成新版：后台 → 产品 → EquiLedger → 上传新的 `EquiLedger-1.3.0.zip` 作为新版本包（版本号填 1.3.0，大于旧版才会触发更新提示）。这一步只换下载文件，与代码更新互不影响。
+
+## 附二：Web App 产品上传/注入/SDK 对应（大白话）
+
+- **上传自检按类型分流**：选 WP 插件/主题才查 Plugin Name/Theme Name 头部；选 Web App 等类型查的是通用安全（病毒函数/危险扩展名/结构）+ licenseos.json 清单（缺失只警告不拦）。以前 Web App 被 WP 规则误拦的问题已修。
+- **创建/编辑同口径**：开发者前台和超管后台的产品表单都按类型变字段；ZIP 上传后自动识别名称/版本；保存自动登记为可下载版本。
+- **一键注入才正式开启授权**：产品编辑页（超管后台）或开发者产品详情页点"一键注入"。WP 包注入 SDK+完整性守卫等模块；Web App 等包注入 `license-os/` 配置+完整性清单，**并按包内技术栈把对应 SDK 放到包根**（.csproj→DotNet/LicenseOSHelper.cs；composer.json→PHP/licenseos-sdk.php；go.mod→Go；package.json→JavaScript；py→Python），不混淆。一键还原会连注入的 SDK 一起移除。
+- **两边互通**：被接入项目根目录放对应 SDK（EquiLedger 根已放 `LicenseOSHelper.cs`，与平台 app/SDK/DotNet 逐字节一致）；EquiLedger 启动时环境变量缺省会自动读注入包内 `license-os/config.json` 的 api_url/api_key 去验权。
