@@ -104,7 +104,12 @@ class EditProduct extends EditRecord
      */
     protected function handleRecordUpdate(Model $record, array $data): Model
     {
+        $zip = $data['plugin_zip'] ?? null;
+        unset($data['plugin_zip']); // 表单临时字段，无对应列
         $record->forceFill($data)->save();
+        if ($zip && in_array($record->type, ProductResource::PACKAGE_TYPES)) {
+            ProductResource::registerPackageFromZip($record, $zip);
+        }
 
         return $record;
     }

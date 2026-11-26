@@ -20,6 +20,9 @@ use Illuminate\Support\Str;
 class ProductResource extends Resource
 {
 
+    /** 支持安装包上传/自动识别的类型（与开发者前台 PACKAGE_TYPES 一致） */
+    public const PACKAGE_TYPES = ['wp_plugin', 'wp_theme', 'web_app', 'desktop_app', 'source_code', 'laravel_package', 'script', 'api_service', 'saas'];
+
     public static function getModelLabel(): string
     {
         return __('admin.product.label');
@@ -171,7 +174,14 @@ class ProductResource extends Resource
                                     Forms\Components\Select::make('type')
                                         ->label(__('admin.product.duration_type'))
                                         ->options(Product::TIER_TYPES)
+                                        ->live()
                                         ->required(),
+                                    Forms\Components\TextInput::make('years')
+                                        ->label(__('年数（1-100）'))
+                                        ->numeric()
+                                        ->default(1)
+                                        ->visible(fn (Forms\Get $get) => $get('type') === 'custom_years')
+                                        ->helperText(__('自定义年时长：月=年×12、天=年×365 自动换算')),
                                     Forms\Components\TextInput::make('days')
                                         ->label(__('admin.product.days_trial'))
                                         ->numeric()
@@ -221,10 +231,11 @@ class ProductResource extends Resource
                         ->icon('heroicon-o-puzzle-piece')
                         ->schema([
                             Forms\Components\FileUpload::make('plugin_zip')
-                                ->label(__('插件/主题 ZIP 文件'))
+                                ->label(__('安装包 ZIP（WP 插件/主题/Web App 等）'))
                                 ->disk('public')
                                 ->directory('temp-uploads')
-                                ->visible(fn (Forms\Get $get) => in_array($get('type'), ['wp_plugin', 'wp_theme']))
+                                ->helperText(__('上传后自动安全扫描并识别信息；保存时自动登记为可下载版本（沿用开发者前台同一套存储/版本管线）'))
+                                ->visible(fn (Forms\Get $get) => in_array($get('type'), self::PACKAGE_TYPES))
                                 ->live() // 关键：启用实时状态绑定
                                 ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
                                 if (!$state) return;
@@ -271,12 +282,18 @@ class ProductResource extends Resource
                                     $disk = \Illuminate\Support\Facades\Storage::disk('public');
                                     $filePath = $disk->path($state);
 
-                                    $parser = app(\App\Services\WpPluginParserService::class);
-                                    $metadata = $parser->parseFromPath($filePath);
+                                    if (in_array($get('type'), ['wp_plugin', 'wp_theme'])) {
+                                        $parser = app(\App\Services\WpPluginParserService::class);
+                                        $metadata = $parser->parseFromPath($filePath);
+                                    } else {
+                                        $metadata = static::parsePackageJson($filePath);
+                                    }
 
                                     foreach ([
                                         'name' => __('产品名称'),
+                                        'slug' => __('产品标识'),
                                         'version' => __('版本号'),
+                                        'description' => __('描述'),
                                         'author' => __('作者'),
                                         'author_profile' => __('作者主页'),
                                         'plugin_homepage' => __('插件主页'),
@@ -324,7 +341,7 @@ class ProductResource extends Resource
                                     }
 
                                     \Filament\Notifications\Notification::make()
-                                        ->title(__('✅ 安全扫描通过 & 插件信息已自动提取'))
+                                        ->title(__('✅ 安全扫描通过 & 安装包信息已自动提取'))
                                         ->body(__('已自动填充名称、版本、作者等字段，请检查并按需修改'))
                                         ->success()
                                         ->send();
@@ -419,6 +436,68 @@ class ProductResource extends Resource
      * Shared save-time business rules for Create/Edit pages.
      * Mirrors Developer\ProductController::buildPricingTiers() and readme sync behavior.
      */
+    /** 非 WP 安装包：读 licenseos.json（与开发者前台 store 同口径） */
+    public static function parsePackageJson(string $filePath): array
+    {
+        try {
+            $zip = new \ZipArchive();
+            if ($zip->open($filePath) === true) {
+                $mj = $zip->getFromName('licenseos.json');
+                $zip->close();
+                $m = $mj !== false ? json_decode($mj, true) : null;
+                if (is_array($m)) {
+                    return array_intersect_key($m, array_flip(['name', 'slug', 'version', 'description', 'short_description']));
+                }
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('licenseos.json 解析失败', ['error' => $e->getMessage()]);
+        }
+        return [];
+    }
+
+    /** 保存时把上传的安装包登记为可下载版本：复用前台 uploadVersion 同一套扫描/存储/版本管线 */
+    public static function registerPackageFromZip(\App\Models\Product $record, string $zipRelative): void
+    {
+        try {
+            $path = \Illuminate\Support\Facades\Storage::disk('public')->path($zipRelative);
+            if (!is_file($path)) return;
+            $meta = static::parsePackageJson($path);
+            $version = (string) ($record->version ?: ($meta['version'] ?? '1.0.0'));
+            $latest = \App\Models\UpdatePackage::where('product_id', $record->id)->max('version');
+            if ($latest && version_compare($version, $latest, '<=')) {
+                \Filament\Notifications\Notification::make()
+                    ->title(__('安装包未登记'))
+                    ->body(__('版本号必须高于当前版本 :v', ['v' => $latest]))
+                    ->warning()->send();
+                return;
+            }
+            $file = new \Illuminate\Http\UploadedFile($path, basename($path), null, null, true);
+            $result = app(\App\Services\ProductStorageService::class)->store($file, $record->slug, $version, $record->tenant_id);
+            \App\Models\UpdatePackage::create([
+                'product_id' => $record->id,
+                'version' => $version,
+                'file_url' => $result['url'],
+                'injection_modules' => null,
+                'changelog' => null,
+            ]);
+            $record->forceFill([
+                'version' => $version,
+                'download_url' => $result['url'],
+                'file_size_bytes' => $result['size'],
+            ])->save();
+            @unlink($path);
+            \Filament\Notifications\Notification::make()
+                ->title(__('✅ 安装包已登记为可下载版本'))
+                ->body($version)
+                ->success()->send();
+        } catch (\Throwable $e) {
+            \Filament\Notifications\Notification::make()
+                ->title(__('安装包登记失败'))
+                ->body($e->getMessage())
+                ->danger()->send();
+        }
+    }
+
     public static function applyProductSaveRules(array $data): array
     {
         $isFree = !empty($data['is_free_product']);
@@ -430,6 +509,15 @@ class ProductResource extends Resource
             if (!is_array($row)) continue; // defensive: corrupt/legacy rows
             $type = $row['type'] ?? '';
             if (!$type) continue;
+            // 自定义年时长：与前台 buildPricingTiers 同口径（custom_years/N_years → N_years，月=年×12、天=年×365）
+            if ($type === 'custom_years' || preg_match('/^(\d{1,3})_years$/', $type, $m)) {
+                $y = $type === 'custom_years' ? (int) ($row['years'] ?? 0) : (int) $m[1];
+                $y = max(1, min(100, $y));
+                $type = $y . '_years';
+                $row['months'] = $y * 12;
+                $row['days'] = $y * 365;
+                if (empty($row['label'])) $row['label'] = $y . ' 年付';
+            }
             $tiers[] = [
                 'type'        => $type,
                 'enabled'     => !empty($row['enabled']),
