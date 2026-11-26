@@ -64,9 +64,9 @@ class ProductController extends Controller
             'slug' => 'required|string|max:255|unique:products,slug',
             'type' => 'required|in:' . implode(',', array_keys(Product::TYPES)),
             'category_id' => 'nullable|exists:categories,id',
-            'price' => 'required|numeric|min:0',
+            'price' => 'nullable|numeric|min:0',
             'description' => 'nullable|string',
-            'version' => 'required|string|max:20',
+            'version' => 'nullable|string|max:20',
             'file' => 'nullable|file|mimes:zip|max:102400',
             'cover_image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
             // WP metadata fields (from ZIP auto-parse)
@@ -165,6 +165,15 @@ class ProductController extends Controller
 
         // Merge parsed metadata into product data (user input takes priority)
         $productData = array_merge($metadata, $validated);
+
+        // 基础价格/版本号空值兜底：价格取最低启用档价（无档为 0），版本取包内识别值（无则 1.0.0）
+        if (!isset($productData['price']) || $productData['price'] === null || $productData['price'] === '') {
+            $tierPrices = array_filter(array_map(fn ($t) => $t['price'] ?? null, (array) ($validated['pricing_tiers'] ?? [])), fn ($p) => $p !== null && $p !== '');
+            $productData['price'] = $tierPrices ? min($tierPrices) : 0;
+        }
+        if (empty($productData['version'])) {
+            $productData['version'] = $metadata['version'] ?? '1.0.0';
+        }
 
         unset($productData['file'], $productData['pricing_tiers'], $productData['cover_image'], $productData['featured'], $productData['reviews_enabled']);
 

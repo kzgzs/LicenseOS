@@ -1,0 +1,40 @@
+<?php
+
+return [
+    'required' => ':attribute 为必填项',
+    'unique' => ':attribute 已存在，请换一个',
+    'numeric' => ':attribute 必须是数字',
+    'integer' => ':attribute 必须是整数',
+    'min' => [
+        'numeric' => ':attribute 不能小于 :min',
+        'string' => ':attribute 至少 :min 个字符',
+    ],
+    'max' => [
+        'numeric' => ':attribute 不能大于 :max',
+        'string' => ':attribute 不能超过 :max 个字符',
+        'file' => ':attribute 不能超过 :max KB',
+    ],
+    'in' => ':attribute 取值不在允许范围内',
+    'regex' => ':attribute 格式不正确',
+    'url' => ':attribute 必须是有效网址',
+    'file' => ':attribute 必须是文件',
+    'mimes' => ':attribute 文件类型须为 :values',
+    'array' => ':attribute 必须是数组',
+    'boolean' => ':attribute 必须是真或假',
+    'exists' => ':attribute 不存在',
+    'string' => ':attribute 必须是文本',
+    'attributes' => [
+        'name' => '产品名称',
+        'slug' => '产品标识',
+        'type' => '产品类型',
+        'price' => '基础价格',
+        'version' => '版本号',
+        'file' => '安装包 ZIP',
+        'category_id' => '分类',
+        'description' => '描述',
+        'short_description' => '简短描述',
+        'pricing_tiers.*.type' => '价格档时长类型',
+        'pricing_tiers.*.years' => '价格档年数',
+        'pricing_tiers.*.price' => '价格档价格',
+    ],
+];
