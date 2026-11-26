@@ -63,7 +63,10 @@ class UpdateController extends Controller
             ], 403);
         }
 
-        $fileName = basename($filePath);
+        // 下载文件名带产品标识：slug-version.zip（存储路径仅版本号为 basename，直接给用户会分不清产品）
+        $slug = preg_replace('/[^A-Za-z0-9._-]/', '', (string) $request->input('product'));
+        $ver = preg_replace('/[^A-Za-z0-9._-]/', '', (string) $request->input('version'));
+        $fileName = ($slug !== '' ? $slug : 'package') . '-' . ($ver !== '' ? $ver : 'latest') . '.zip';
 
         return response()->download($filePath, $fileName, [
             'Content-Type' => 'application/zip',

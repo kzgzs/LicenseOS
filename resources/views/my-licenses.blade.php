@@ -47,6 +47,7 @@
                         </div>
                         @if($order->product && $order->product->download_url)
                             <a href="{{ $order->product->download_url }}"
+                               download="{{ $order->product->slug }}-{{ $order->product->version }}.zip"
                                class="text-sm px-4 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/50 font-medium">
                                 {{ __('licenses.download') }}
                             </a>
