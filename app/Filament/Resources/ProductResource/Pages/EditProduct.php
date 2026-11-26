@@ -113,4 +113,37 @@ class EditProduct extends EditRecord
 
         return $record;
     }
+
+    /** 与开发者前台同口径的一键注入/还原（超管后台产品编辑页） */
+    protected function getHeaderActions(): array
+    {
+        return [
+            \Filament\Actions\Action::make('injectNow')
+                ->label(__('一键注入授权'))
+                ->icon('heroicon-o-shield-check')
+                ->color('success')
+                ->requiresConfirmation()
+                ->action(function () {
+                    $r = ProductResource::injectLatestPackage($this->record);
+                    \Filament\Notifications\Notification::make()
+                        ->title($r['ok'] ? __('注入完成') : __('注入失败'))
+                        ->body($r['msg'])
+                        ->{$r['ok'] ? 'success' : 'danger'}()
+                        ->send();
+                }),
+            \Filament\Actions\Action::make('uninjectNow')
+                ->label(__('一键还原干净包'))
+                ->icon('heroicon-o-arrow-uturn-left')
+                ->color('warning')
+                ->requiresConfirmation()
+                ->action(function () {
+                    $r = ProductResource::uninjectLatestPackage($this->record);
+                    \Filament\Notifications\Notification::make()
+                        ->title($r['ok'] ? __('还原完成') : __('还原失败'))
+                        ->body($r['msg'])
+                        ->{$r['ok'] ? 'success' : 'danger'}()
+                        ->send();
+                }),
+        ];
+    }
 }

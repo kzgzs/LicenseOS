@@ -977,6 +977,7 @@ function compareVersions(a, b) {
 
         var formData = new FormData();
         formData.append('file', file);
+        formData.append('type', '{{ $product->type }}');
         formData.append('_token', '{{ csrf_token() }}');
 
         // Perform security scan first

@@ -111,7 +111,7 @@ class ProductController extends Controller
         if ($request->hasFile('file')) {
             // SECURITY CHECK: Validate ZIP file before any processing
             $scanner = app(ZipSecurityScannerService::class);
-            $scanResult = $scanner->scan($request->file('file'));
+            $scanResult = $scanner->scan($request->file('file'), $validated['type'] ?? 'wp_plugin');
             
             if (!$scanResult['safe']) {
                 return back()->withErrors([
@@ -290,7 +290,7 @@ class ProductController extends Controller
             }
             
             $scanner = app(ZipSecurityScannerService::class);
-            $scanResult = $scanner->scan($request->file('file'));
+            $scanResult = $scanner->scan($request->file('file'), (string) $request->input('type', 'wp_plugin'));
             
             if (!$scanResult['safe']) {
                 return response()->json([
@@ -460,7 +460,7 @@ class ProductController extends Controller
         // PRIORITY: Security scan before any processing
         try {
             $scanner = app(ZipSecurityScannerService::class);
-            $scanResult = $scanner->scan($request->file('file'));
+            $scanResult = $scanner->scan($request->file('file'), $product->type);
             
             if (!$scanResult['safe']) {
                 return back()->withErrors([

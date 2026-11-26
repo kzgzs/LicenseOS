@@ -256,6 +256,9 @@ class ProductResource extends Resource
                                             'name' => 'file',
                                             'contents' => fopen($fileDiskPath, 'r'),
                                             'filename' => basename($fileDiskPath),
+                                        ], [
+                                            'name' => 'type',
+                                            'contents' => (string) $get('type'),
                                         ]],
                                     ]);
 
@@ -495,6 +498,77 @@ class ProductResource extends Resource
                 ->title(__('安装包登记失败'))
                 ->body($e->getMessage())
                 ->danger()->send();
+        }
+    }
+
+    /** 超管后台一键注入：与开发者前台 injectNow 同管线（原始备份→注入→校验→存储→更新链接） */
+    public static function injectLatestPackage(\App\Models\Product $record): array
+    {
+        $pkg = \App\Models\UpdatePackage::where('product_id', $record->id)->latest('id')->first();
+        if (!$pkg) return ['ok' => false, 'msg' => __('尚未上传任何版本包，请先上传 ZIP')];
+        $storage = app(\App\Services\ProductStorageService::class);
+        $temp = storage_path('app/tmp_admin_inject_' . uniqid() . '.zip');
+        try {
+            $storage->downloadTo($pkg->original_file_url ?: $pkg->file_url, $temp);
+            if (!$pkg->has_original || !$pkg->original_file_url) {
+                $orig = new \Illuminate\Http\UploadedFile($temp, 'original.zip', 'application/zip', null, true);
+                $r = $storage->storeOriginal($orig, $record->slug, $pkg->version, $record->tenant_id);
+                $pkg->update(['original_file_url' => $r['url'], 'has_original' => true]);
+            }
+            $siteUrl = \App\Models\SiteSetting::get('site_url', config('app.url'));
+            $apiUrl = rtrim($siteUrl, '/') . '/api/v2';
+            $tenant = \App\Models\Tenant::find($record->tenant_id);
+            $apiKey = $tenant?->apiKeys()->where('active', true)->first()?->key ?? '';
+            if (!$apiKey) return ['ok' => false, 'msg' => __('租户 API 密钥缺失，无法注入')];
+            $injector = app(\App\Services\LicenseProtectionInjector::class);
+            $injector->inject($temp, $apiUrl, $apiKey, $record->slug, $record->type);
+            $ver = $injector->verifyInjection($temp);
+            if ($ver['status'] !== 'success') return ['ok' => false, 'msg' => __('注入校验失败') . ': ' . ($ver['reason'] ?? '')];
+            $inj = new \Illuminate\Http\UploadedFile($temp, 'injected.zip', 'application/zip', null, true);
+            $res = $storage->store($inj, $record->slug, $pkg->version, $record->tenant_id);
+            $pkg->update([
+                'file_url' => $res['url'],
+                'injection_modules' => json_encode(in_array($record->type, ['wp_plugin', 'wp_theme'], true)
+                    ? ['sdk', 'integrity_guard', 'license_gate', 'secondary_cross_check', 'self_guard']
+                    : ['license_config', 'integrity_manifest']),
+            ]);
+            $record->update(['download_url' => $res['url']]);
+            return ['ok' => true, 'msg' => __('✅ 注入成功，授权保护已生效（下载链接已更新）')];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'msg' => $e->getMessage()];
+        } finally {
+            if (file_exists($temp)) @unlink($temp);
+        }
+    }
+
+    /** 超管后台一键还原：与前台 uninjectNow 同管线 */
+    public static function uninjectLatestPackage(\App\Models\Product $record): array
+    {
+        $pkg = \App\Models\UpdatePackage::where('product_id', $record->id)->latest('id')->first();
+        if (!$pkg) return ['ok' => false, 'msg' => __('尚未上传任何版本包')];
+        try {
+            if ($pkg->has_original && $pkg->original_file_url) {
+                $record->update(['download_url' => $pkg->original_file_url]);
+                $pkg->update(['file_url' => $pkg->original_file_url, 'injection_modules' => null]);
+            } else {
+                $storage = app(\App\Services\ProductStorageService::class);
+                $temp = storage_path('app/tmp_admin_uninject_' . uniqid() . '.zip');
+                try {
+                    $storage->downloadTo($pkg->file_url, $temp);
+                    app(\App\Services\LicenseProtectionInjector::class)->uninject($temp);
+                    $clean = new \Illuminate\Http\UploadedFile($temp, 'clean.zip', 'application/zip', null, true);
+                    $res = $storage->store($clean, $record->slug, $pkg->version, $record->tenant_id);
+                    $record->update(['download_url' => $res['url']]);
+                    $pkg->update(['file_url' => $res['url'], 'injection_modules' => null]);
+                } finally {
+                    if (file_exists($temp)) @unlink($temp);
+                }
+            }
+            \App\Models\SiteSetting::set("integrity_hash_{$record->slug}", '');
+            \App\Models\SiteSetting::set("integrity_api_key_hash_{$record->slug}", '');
+            return ['ok' => true, 'msg' => __('✅ 已还原干净包，注入内容已移除')];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'msg' => $e->getMessage()];
         }
     }
 

@@ -50,3 +50,6 @@ Thumbs.db
 /storage/framework/views/*
 /storage/logs/*
 !**/.gitkeep
+
+# 交付打包产物
+/dist/

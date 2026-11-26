@@ -521,6 +521,7 @@
             
             var scanFormData = new FormData();
             scanFormData.append('file', file);
+            scanFormData.append('type', typeSelect ? typeSelect.value : 'wp_plugin');
             scanFormData.append('_token', '{{ csrf_token() }}');
             
             fetch(scanUrl, { method: 'POST', body: scanFormData, headers: { 'X-Requested-With': 'XMLHttpRequest' }})

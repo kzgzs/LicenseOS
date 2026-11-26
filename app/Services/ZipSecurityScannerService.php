@@ -63,12 +63,13 @@ class ZipSecurityScannerService
     ];
 
     /**
-     * 扫描上传的 ZIP 文件
+     * 扫描上传的 ZIP 文件（按产品类型分流：WP 查头部标记，非 WP 查 licenseos.json 清单；通用病毒/结构检查不变）
      *
      * @param UploadedFile $file
+     * @param string $type 产品类型（wp_plugin/wp_theme/web_app/...）
      * @return array ['safe' => bool, 'issues' => [...], 'warnings' => [...]]
      */
-    public function scan(UploadedFile $file): array
+    public function scan(UploadedFile $file, string $type = 'wp_plugin'): array
     {
         set_time_limit(self::TIMEOUT_SECONDS);
 
@@ -160,9 +161,14 @@ class ZipSecurityScannerService
             }
         }
 
-        // 6. WP 插件主文件检查
-        $wpCheck = $this->checkWpPluginMainFile($zip);
-        $result = array_merge($result, $wpCheck);
+        // 6. 主文件/清单检查：按类型分流（沿用同一扫描管线，不照搬 WP 规则）
+        if (in_array($type, ['wp_plugin', 'wp_theme'], true)) {
+            $wpCheck = $this->checkWpPluginMainFile($zip);
+            $result = array_merge($result, $wpCheck);
+        } else {
+            $genericCheck = $this->checkGenericManifest($zip);
+            $result = array_merge($result, $genericCheck);
+        }
 
         $this->cleanup($zip, $extractDir);
 
@@ -545,6 +551,28 @@ class ZipSecurityScannerService
             $result['warnings'][] = '缺少许可证文件（LICENSE 或 COPYING）';
         }
 
+        return $result;
+    }
+
+    /**
+     * 非 WP 安装包：检查 licenseos.json 清单（平台自动识别/注入依据；缺失仅警告不阻断）
+     */
+    private function checkGenericManifest(ZipArchive $zip): array
+    {
+        $result = ['issues' => [], 'warnings' => []];
+        $found = false;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if ($name === false) continue;
+            $parts = explode('/', $name);
+            if (count($parts) <= 2 && strtolower(basename($name)) === 'licenseos.json') {
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            $result['warnings'][] = '非 WP 安装包未含 licenseos.json 清单（建议放置于包根目录，供平台自动识别名称/版本与一键注入）';
+        }
         return $result;
     }
 

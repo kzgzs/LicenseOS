@@ -667,6 +667,14 @@ PHP;
                 }
                 $files[$name] = hash('sha256', $content);
             }
+            // 对应技术栈的 SDK 放置包根（沿用 WP injectSdkFile 机制，但按栈选对应文件，不混淆）
+            $sdk = $this->detectGenericSdk($zip);
+            if ($sdk !== null) {
+                $sdkContent = @file_get_contents(base_path('app/SDK/' . $sdk['source']));
+                if ($sdkContent !== false) {
+                    $zip->addFromString($sdk['entry'], $sdkContent);
+                }
+            }
             $zip->addFromString('license-os/config.json', json_encode([
                 'api_url' => $apiUrl,
                 'api_key' => $apiKey,
@@ -674,6 +682,7 @@ PHP;
                 'product_type' => $productType,
                 'injected_at' => now()->toIso8601String(),
                 'modules' => ['license_config', 'integrity_manifest'],
+                'sdk_file' => $sdk['entry'] ?? null,
             ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
             $zip->addFromString('license-os/manifest.json', json_encode(['algo' => 'sha256', 'files' => $files], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
             $zip->addFromString('license-os/README.txt', "本目录由 LicenseOS 平台一键注入：config.json 为授权 API 配置，manifest.json 为原文件完整性清单。\n平台一键还原会整体删除本目录，恢复干净包，可迁移其它平台授权。\n请勿手工把本目录放入服务器产品目录：包存储由平台哈希绑定，手工放置无效。");
@@ -683,6 +692,35 @@ PHP;
             Log::error('[injectGeneric] failed', ['error' => $e->getMessage()]);
             return false;
         }
+    }
+
+    /**
+     * 非 WP 包按技术栈探测对应 SDK（.NET→DotNet、PHP→PHP、Go→Go、JS→JavaScript、Python→Python）
+     */
+    protected function detectGenericSdk(ZipArchive $zip): ?array
+    {
+        $names = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $n = $zip->getNameIndex($i);
+            if ($n !== false && !str_ends_with($n, '/')) $names[] = $n;
+        }
+        $hasSuffix = function (string $suffix) use ($names): bool {
+            foreach ($names as $n) if (str_ends_with(strtolower($n), $suffix)) return true;
+            return false;
+        };
+        $hasRoot = function (string $base) use ($names): bool {
+            foreach ($names as $n) {
+                $p = explode('/', $n);
+                if (count($p) <= 2 && strtolower(basename($n)) === $base) return true;
+            }
+            return false;
+        };
+        if ($hasSuffix('.csproj') || $hasSuffix('.sln')) return ['source' => 'DotNet/LicenseOSHelper.cs', 'entry' => 'LicenseOSHelper.cs'];
+        if ($hasRoot('composer.json')) return ['source' => 'PHP/licenseos-sdk.php', 'entry' => 'licenseos-sdk.php'];
+        if ($hasRoot('go.mod')) return ['source' => 'Go/licenseos.go', 'entry' => 'licenseos.go'];
+        if ($hasRoot('package.json')) return ['source' => 'JavaScript/licenseos-sdk.js', 'entry' => 'licenseos-sdk.js'];
+        if ($hasRoot('requirements.txt') || $hasRoot('pyproject.toml') || $hasSuffix('.py')) return ['source' => 'Python/licenseos-sdk.py', 'entry' => 'licenseos-sdk.py'];
+        return null;
     }
 
     public function uninject(string $zipPath): bool
@@ -703,8 +741,17 @@ PHP;
                 }
             }
             if (!empty($genericEntries)) {
+                $cfg = $zip->getFromName('license-os/config.json');
+                $sdkFile = null;
+                if ($cfg !== false) {
+                    $c = json_decode($cfg, true);
+                    $sdkFile = is_array($c) ? ($c['sdk_file'] ?? null) : null;
+                }
                 foreach ($genericEntries as $n) {
                     $zip->deleteName($n);
+                }
+                if ($sdkFile) {
+                    $zip->deleteName($sdkFile); // 还原时一并移除注入的对应 SDK，恢复干净包
                 }
                 return true; // finally 统一 close
             }
