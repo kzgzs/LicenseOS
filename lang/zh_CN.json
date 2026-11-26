@@ -271,7 +271,7 @@
     "product.duration": "时长",
     "product.domain": "域名",
     "product.domain_placeholder": "例如 example.com",
-    "product.domain_hint": "您将在此域名上使用该产品。",
+    "product.domain_hint": "您将在此域名上使用该产品。本地测试可填 localhost 或局域网 IP。",
     "product.processing": "处理中...",
     "product.already_trialed": "已试用过——新域名可用",
     "product.login_to_purchase": "登录后购买",

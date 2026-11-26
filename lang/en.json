@@ -270,7 +270,7 @@
     "product.duration": "Duration",
     "product.domain": "Domain",
     "product.domain_placeholder": "e.g. example.com",
-    "product.domain_hint": "The domain where you will use this product.",
+    "product.domain_hint": "The domain where you will use this product. For local testing use localhost or a LAN IP.",
     "product.processing": "Processing...",
     "product.already_trialed": "Already trialed — new domain OK",
     "product.login_to_purchase": "Login to Purchase",
