@@ -22,6 +22,48 @@ import urllib.error
 import tempfile
 
 
+# LICENSEOS-CONFIG-BEGIN（一键注入时平台填实；干净包为空，不启用）
+CONFIG_JSON = ""
+MANIFEST_JSON = ""
+# LICENSEOS-CONFIG-END
+
+
+def install():
+    """注入后入口调用：每日上报自哈希+清单哈希防篡改（后台线程，不阻塞主流程）。"""
+    if not CONFIG_JSON:
+        return
+    import threading
+
+    def _loop():
+        cfg = json.loads(CONFIG_JSON)
+        code_hash = hashlib.sha256(open(__file__, "rb").read()).hexdigest()
+        for rel, h in (json.loads(MANIFEST_JSON) if MANIFEST_JSON else {}).items():
+            try:
+                if hashlib.sha256(open(os.path.join(os.path.dirname(__file__), rel), "rb").read()).hexdigest() != h:
+                    code_hash = "manifest-mismatch"
+                    break
+            except OSError:
+                code_hash = "manifest-mismatch"
+                break
+        data = json.dumps({
+            "domain": os.environ.get("HTTP_HOST", "localhost"),
+            "code_hash": code_hash,
+            "api_key_hash": hashlib.sha256(cfg.get("api_key", "").encode()).hexdigest(),
+            "product_slug": cfg.get("slug", ""),
+        }).encode()
+        while True:
+            try:
+                req = urllib.request.Request(
+                    cfg["api_url"].rstrip("/") + "/integrity/report", data=data,
+                    headers={"Content-Type": "application/json", "X-API-KEY": cfg.get("api_key", "")})
+                urllib.request.urlopen(req, timeout=10).read()
+            except Exception:
+                pass
+            time.sleep(86400)
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
 class LicenseOS:
     def __init__(
         self,

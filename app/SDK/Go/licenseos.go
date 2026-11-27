@@ -24,6 +24,48 @@ import (
 	"time"
 )
 
+// LICENSEOS-CONFIG-BEGIN（一键注入时平台填实；干净包为空，不启用）
+var ConfigJSON = ""
+var ManifestJSON = ""
+
+// LICENSEOS-CONFIG-END
+
+// Run 防篡改上报：配置块自哈希（编译态常量），每日限频；被改/被删即平台标记篡改冻结。
+func Run() {
+	if ConfigJSON == "" {
+		return
+	}
+	var cfg map[string]interface{}
+	if json.Unmarshal([]byte(ConfigJSON), &cfg) != nil {
+		return
+	}
+	api, _ := cfg["api_url"].(string)
+	key, _ := cfg["api_key"].(string)
+	slug, _ := cfg["slug"].(string)
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(ConfigJSON)))
+	keyHash := fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
+	body, _ := json.Marshal(map[string]string{"domain": hostname(), "code_hash": hash, "api_key_hash": keyHash, "product_slug": slug})
+	for {
+		req, _ := http.NewRequest("POST", strings.TrimRight(api, "/")+"/integrity/report", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-API-KEY", key)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}
+		time.Sleep(24 * time.Hour)
+	}
+}
+
+func hostname() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return "localhost"
+	}
+	return h
+}
+
 type Client struct {
 	APIUrl     string
 	APIKey     string
